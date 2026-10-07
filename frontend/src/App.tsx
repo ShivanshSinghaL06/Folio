@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   askQuestion,
   createConversation,
@@ -10,6 +10,12 @@ import {
   uploadDocument,
 } from "./api";
 import type { ChatMessage, Citation, Conversation, DocumentRecord } from "./types";
+
+const SUGGESTIONS = [
+  "Summarize the main points",
+  "What dates or deadlines are mentioned?",
+  "List the key obligations",
+];
 
 function locationLabel(citation: Citation): string {
   const parts: string[] = [];
@@ -24,6 +30,66 @@ function locationLabel(citation: Citation): string {
   return parts.join(" · ");
 }
 
+function FolioMark({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="9" fill="#18181b" />
+      <rect x="13.6" y="6.4" width="11.2" height="15.2" rx="1.8" fill="#ffffff" opacity="0.32" />
+      <path
+        fill="#ffffff"
+        d="M8.1 11h6.7l3.7 3.6v8.4c0 .9-.7 1.6-1.6 1.6H8.1c-.9 0-1.6-.7-1.6-1.6v-10.4c0-.9.7-1.6 1.6-1.6z"
+      />
+      <path fill="#d4d4d8" d="M14.8 11v2.7c0 .5.4.9.9.9h2.8z" />
+      <path d="M9.1 17.5h5.3M9.1 20.2h3.5" stroke="#18181b" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconPlus() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M8 3.25v9.5M3.25 8h9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconClose() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconSend() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M8 12.5V3.5M4.5 7 8 3.5 11.5 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconPaperclip() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M6.2 8.6 10 4.8a2.1 2.1 0 0 1 3 3L7.4 13.4a3.2 3.2 0 0 1-4.5-4.5l5.5-5.5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function IconMenu() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function App() {
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -32,15 +98,19 @@ export function App() {
   const [selectedDocument, setSelectedDocument] = useState("all");
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeCitation, setActiveCitation] = useState<number | null>(null);
+  const [openSource, setOpenSource] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
 
   const readyDocuments = documents.filter((document) => document.status === "ready");
-  const latestAssistant = useMemo(
-    () => [...messages].reverse().find((message) => message.role === "assistant"),
-    [messages],
+  const activeTitle = useMemo(
+    () => conversations.find((conversation) => conversation.id === activeId)?.title ?? "New chat",
+    [conversations, activeId],
   );
-  const citations = latestAssistant?.citations ?? [];
 
   async function refreshLibrary() {
     const [docs, chats] = await Promise.all([listDocuments(), listConversations()]);
@@ -54,12 +124,25 @@ export function App() {
     });
   }, []);
 
+  useEffect(() => {
+    if (messages.length === 0 && !asking) {
+      return;
+    }
+    endRef.current?.scrollIntoView({ block: "end" });
+  }, [messages, asking]);
+
+  function resizeComposer(element: HTMLTextAreaElement) {
+    element.style.height = "0px";
+    element.style.height = `${Math.min(element.scrollHeight, 160)}px`;
+  }
+
   async function openConversation(id: string) {
     setError(null);
     const detail = await getConversation(id);
     setActiveId(detail.id);
     setMessages(detail.messages);
-    setActiveCitation(null);
+    setOpenSource(null);
+    setSidebarOpen(false);
   }
 
   async function onUpload(file: File | undefined) {
@@ -99,7 +182,9 @@ export function App() {
       setConversations((current) => [created, ...current]);
       setActiveId(created.id);
       setMessages([]);
-      setActiveCitation(null);
+      setOpenSource(null);
+      setSidebarOpen(false);
+      composerRef.current?.focus();
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : "A new chat could not be started.");
     }
@@ -119,14 +204,28 @@ export function App() {
     }
   }
 
-  async function onAsk(event: FormEvent) {
-    event.preventDefault();
-    const content = draft.trim();
+  async function submitQuestion(content: string) {
     if (!content || busy) {
       return;
     }
     setBusy(true);
+    setAsking(true);
     setError(null);
+    setDraft("");
+    if (composerRef.current) {
+      composerRef.current.style.height = "48px";
+    }
+    const optimisticId = `local-${Date.now()}`;
+    setMessages((current) => [
+      ...current,
+      {
+        id: optimisticId,
+        role: "user",
+        content,
+        citations: [],
+        created_at: new Date().toISOString(),
+      },
+    ]);
     try {
       let conversationId = activeId;
       if (!conversationId) {
@@ -137,158 +236,238 @@ export function App() {
       }
       const documentIds = selectedDocument === "all" ? null : [selectedDocument];
       const result = await askQuestion(conversationId, content, documentIds);
-      setDraft("");
-      setMessages((current) => [...current, result.user_message, result.assistant_message]);
-      setActiveCitation(null);
+      setMessages((current) => [
+        ...current.filter((message) => message.id !== optimisticId),
+        result.user_message,
+        result.assistant_message,
+      ]);
+      setOpenSource(null);
       await refreshLibrary();
     } catch (reason: unknown) {
+      setMessages((current) => current.filter((message) => message.id !== optimisticId));
+      setDraft(content);
       setError(reason instanceof Error ? reason.message : "The question could not be answered.");
     } finally {
       setBusy(false);
+      setAsking(false);
     }
   }
 
+  function onAsk(event: FormEvent) {
+    event.preventDefault();
+    void submitQuestion(draft.trim());
+  }
+
   return (
-    <div className="shell">
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">Document desk</p>
-          <h1>Semantic Document Search</h1>
+    <div className="app">
+      <aside className={sidebarOpen ? "sidebar open" : "sidebar"}>
+        <div className="brand">
+          <FolioMark className="mark" />
+          <div className="brand-copy">
+            <strong>Folio</strong>
+            <span>Ask your documents</span>
+          </div>
         </div>
-        <p className="lede">Ask questions across PDF and Word files. Answers keep the page or section they came from.</p>
-      </header>
+        <button type="button" className="ghost" onClick={() => void onNewChat()}>
+          <IconPlus />
+          New chat
+        </button>
 
-      {error ? (
-        <p className="banner" role="alert">
-          {error}
-        </p>
-      ) : null}
+        <p className="section-label">Chats</p>
+        <div className="scroll-list threads">
+          {conversations.length === 0 ? <p className="hint">No chats yet.</p> : null}
+          {conversations.map((conversation) => (
+            <div key={conversation.id} className={conversation.id === activeId ? "thread active" : "thread"}>
+              <button
+                type="button"
+                className="thread-main"
+                onClick={() =>
+                  void openConversation(conversation.id).catch((reason: unknown) => {
+                    setError(reason instanceof Error ? reason.message : "The chat could not be opened.");
+                  })
+                }
+              >
+                {conversation.title}
+              </button>
+              <button type="button" className="icon-btn" aria-label="Delete chat" onClick={() => void onDeleteChat(conversation.id)}>
+                <IconClose />
+              </button>
+            </div>
+          ))}
+        </div>
 
-      <main className="layout">
-        <aside className="panel library">
-          <div className="panel-head">
-            <h2>Library</h2>
-            <label className="upload">
-              Add file
-              <input
-                type="file"
-                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  event.target.value = "";
-                  void onUpload(file).catch((reason: unknown) => {
-                    setError(reason instanceof Error ? reason.message : "Upload failed.");
-                  });
-                }}
-              />
-            </label>
-          </div>
-          {documents.length === 0 ? <p className="empty">No documents yet.</p> : null}
-          <ul className="doc-list">
-            {documents.map((document) => (
-              <li key={document.id}>
-                <div>
-                  <strong>{document.filename}</strong>
-                  <span className={`status status-${document.status}`}>{document.status}</span>
-                  <p>
-                    {document.status === "ready"
-                      ? `${document.chunk_count} passages`
-                      : document.error_message || "Waiting"}
-                  </p>
-                </div>
-                <button type="button" onClick={() => void onDeleteDocument(document.id)}>
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
+        <p className="section-label">Documents</p>
+        <button type="button" className="ghost" onClick={() => fileRef.current?.click()} disabled={busy}>
+          <IconPlus />
+          Add document
+        </button>
+        <div className="scroll-list">
+          {documents.length === 0 ? <p className="hint">PDF and Word files.</p> : null}
+          {documents.map((document) => (
+            <div key={document.id} className="doc">
+              <div className="doc-main">
+                <strong>{document.filename}</strong>
+                <span className={document.status === "failed" ? "meta failed" : "meta"}>
+                  {document.status === "ready"
+                    ? `${document.chunk_count} passages`
+                    : document.error_message || document.status}
+                </span>
+              </div>
+              <button type="button" className="icon-btn" aria-label={`Remove ${document.filename}`} onClick={() => void onDeleteDocument(document.id)}>
+                <IconClose />
+              </button>
+            </div>
+          ))}
+        </div>
+      </aside>
+      {sidebarOpen ? <button type="button" className="backdrop" aria-label="Close menu" onClick={() => setSidebarOpen(false)} /> : null}
 
-          <div className="panel-head">
-            <h2>Chats</h2>
-            <button type="button" onClick={() => void onNewChat()}>
-              New chat
-            </button>
-          </div>
-          <ul className="chat-list">
-            {conversations.map((conversation) => (
-              <li key={conversation.id} className={conversation.id === activeId ? "active" : ""}>
-                <button
-                  type="button"
-                  onClick={() =>
-                    void openConversation(conversation.id).catch((reason: unknown) => {
-                      setError(reason instanceof Error ? reason.message : "The chat could not be opened.");
-                    })
-                  }
-                >
-                  {conversation.title}
-                </button>
-                <button type="button" onClick={() => void onDeleteChat(conversation.id)} aria-label="Delete chat">
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
-        </aside>
+      <section className="thread-col">
+        <div className="mobile-bar">
+          <button type="button" className="menu-btn" aria-label="Open menu" onClick={() => setSidebarOpen(true)}>
+            <IconMenu />
+          </button>
+          <strong>{activeTitle}</strong>
+        </div>
 
-        <section className="panel conversation">
-          <div className="messages">
-            {messages.length === 0 ? (
-              <p className="empty">Upload a document, then ask about a clause, date, or term.</p>
+        <div className="viewport">
+          <div className="column">
+            {error ? (
+              <p className="banner" role="alert">
+                {error}
+              </p>
             ) : null}
-            {messages.map((message) => (
-              <article key={message.id} className={`bubble ${message.role}`}>
-                <p>{message.content}</p>
+            {messages.length === 0 && !asking ? (
+              <div className="welcome">
+                <FolioMark className="welcome-mark" />
+                <h1>How can I help with your documents?</h1>
+                <p className="empty-copy">
+                  {readyDocuments.length === 0
+                    ? "Add a PDF or Word file, then ask about a clause, date, or term."
+                    : "Answers stay tied to the page or section they came from."}
+                </p>
+                <div className="suggestions">
+                  {SUGGESTIONS.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => {
+                        setDraft(suggestion);
+                        composerRef.current?.focus();
+                      }}
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {messages.map((message) =>
+              message.role === "user" ? (
+                <article key={message.id} className="message user">
+                  <div className="user-bubble">
+                    <p>{message.content}</p>
+                  </div>
+                </article>
+              ) : (
+                <article key={message.id} className="message assistant">
+                  <FolioMark className="avatar" />
+                  <div>
+                    <div className="assistant-body">
+                      <p>{message.content}</p>
+                    </div>
+                    {message.citations.length > 0 ? (
+                      <div className="sources">
+                        {message.citations.map((citation) => {
+                          const key = `${message.id}:${citation.index}`;
+                          const where = locationLabel(citation);
+                          return (
+                            <div key={key} className="source">
+                              <button
+                                type="button"
+                                className="source-toggle"
+                                aria-expanded={openSource === key}
+                                onClick={() => setOpenSource((current) => (current === key ? null : key))}
+                              >
+                                <span className="source-index">[{citation.index}]</span>
+                                <span className="source-name">
+                                  {citation.document_name}
+                                  {where ? ` · ${where}` : ""}
+                                </span>
+                                <span className={citation.cited_inline ? "pill cited" : "pill"}>
+                                  {citation.cited_inline ? "Cited" : "Retrieved"}
+                                </span>
+                              </button>
+                              {openSource === key ? <blockquote>{citation.excerpt}</blockquote> : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                </article>
+              ),
+            )}
+            {asking ? (
+              <article className="message assistant" aria-live="polite">
+                <FolioMark className="avatar" />
+                <p className="pending dots">Looking through your documents</p>
               </article>
-            ))}
+            ) : null}
+            <div ref={endRef} />
           </div>
-          <form onSubmit={(event) => void onAsk(event)} className="composer">
-            <label>
-              Search in
-              <select value={selectedDocument} onChange={(event) => setSelectedDocument(event.target.value)}>
-                <option value="all">All ready documents</option>
+        </div>
+
+        <form className="composer-wrap" onSubmit={onAsk}>
+          <div className="composer">
+            <textarea
+              ref={composerRef}
+              value={draft}
+              rows={1}
+              placeholder="Ask about your documents"
+              onChange={(event) => {
+                setDraft(event.target.value);
+                resizeComposer(event.target);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void submitQuestion(draft.trim());
+                }
+              }}
+            />
+            <div className="composer-bar">
+              <button type="button" className="attach" aria-label="Add document" disabled={busy} onClick={() => fileRef.current?.click()}>
+                <IconPaperclip />
+              </button>
+              <select className="scope" value={selectedDocument} aria-label="Search in" onChange={(event) => setSelectedDocument(event.target.value)}>
+                <option value="all">All documents</option>
                 {readyDocuments.map((document) => (
                   <option key={document.id} value={document.id}>
                     {document.filename}
                   </option>
                 ))}
               </select>
-            </label>
-            <textarea
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder="Ask a question about the uploaded documents"
-              rows={3}
-            />
-            <button type="submit" disabled={busy || draft.trim().length === 0}>
-              {busy ? "Working" : "Ask"}
-            </button>
-          </form>
-        </section>
-
-        <aside className="panel sources">
-          <h2>Sources</h2>
-          {citations.length === 0 ? <p className="empty">Citations for the latest answer appear here.</p> : null}
-          <ol>
-            {citations.map((citation) => (
-              <li key={`${citation.document_id}-${citation.index}`}>
-                <button
-                  type="button"
-                  className={activeCitation === citation.index ? "open" : ""}
-                  onClick={() =>
-                    setActiveCitation((current) => (current === citation.index ? null : citation.index))
-                  }
-                >
-                  <span className="index">[{citation.index}]</span>
-                  <strong>{citation.document_name}</strong>
-                  {locationLabel(citation) ? <em>{locationLabel(citation)}</em> : null}
-                  {citation.cited_inline ? <span className="mark">cited</span> : <span className="mark quiet">retrieved</span>}
-                </button>
-                {activeCitation === citation.index ? <blockquote>{citation.excerpt}</blockquote> : null}
-              </li>
-            ))}
-          </ol>
-        </aside>
-      </main>
+              <button type="submit" className="send" aria-label="Send" disabled={busy || draft.trim().length === 0}>
+                <IconSend />
+              </button>
+            </div>
+          </div>
+          <p className="disclaimer">Folio cites the passage an answer came from. Check the source before you rely on it.</p>
+        </form>
+        <input
+          ref={fileRef}
+          type="file"
+          hidden
+          accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            void onUpload(file);
+          }}
+        />
+      </section>
     </div>
   );
 }
