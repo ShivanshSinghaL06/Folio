@@ -4,9 +4,7 @@ Folio is a document question-and-answer app made by [Shivansh Singhal](https://g
 
 The public app is at [https://folio-orcin-five.vercel.app](https://folio-orcin-five.vercel.app). A longer write-up of the implementation is in the app at [About](https://folio-orcin-five.vercel.app/about).
 
-<video src="frontend/public/folio.mp4" poster="frontend/public/folio.jpg" controls width="720"></video>
-
-[Play the film](frontend/public/folio.mp4)
+[![Folio](frontend/public/folio.jpg)](frontend/public/folio.mp4)
 
 ## What it does
 
