@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://api-production-6381.up.railway.app/api/:path*"
+    },
+    {
+      "source": "/about",
+      "destination": "/index.html"
+    }
+  ]
+}

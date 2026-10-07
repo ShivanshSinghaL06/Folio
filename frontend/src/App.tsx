@@ -9,6 +9,7 @@ import {
   listDocuments,
   uploadDocument,
 } from "./api";
+import { About } from "./About";
 import type { ChatMessage, Citation, Conversation, DocumentRecord } from "./types";
 
 const SUGGESTIONS = [
@@ -102,6 +103,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [openSource, setOpenSource] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [path, setPath] = useState(() => window.location.pathname);
   const fileRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -123,6 +125,18 @@ export function App() {
       setError(reason instanceof Error ? reason.message : "The API is not reachable.");
     });
   }, []);
+
+  useEffect(() => {
+    const syncPath = () => setPath(window.location.pathname);
+    window.addEventListener("popstate", syncPath);
+    return () => window.removeEventListener("popstate", syncPath);
+  }, []);
+
+  function navigate(href: string) {
+    window.history.pushState({}, "", href);
+    setPath(window.location.pathname);
+    setSidebarOpen(false);
+  }
 
   useEffect(() => {
     if (messages.length === 0 && !asking) {
@@ -319,6 +333,17 @@ export function App() {
             </div>
           ))}
         </div>
+        <a
+          href="/about"
+          className={path === "/about" ? "nav-link active" : "nav-link"}
+          aria-current={path === "/about" ? "page" : undefined}
+          onClick={(event) => {
+            event.preventDefault();
+            navigate("/about");
+          }}
+        >
+          About
+        </a>
       </aside>
       {sidebarOpen ? <button type="button" className="backdrop" aria-label="Close menu" onClick={() => setSidebarOpen(false)} /> : null}
 
@@ -327,10 +352,16 @@ export function App() {
           <button type="button" className="menu-btn" aria-label="Open menu" onClick={() => setSidebarOpen(true)}>
             <IconMenu />
           </button>
-          <strong>{activeTitle}</strong>
+          <strong>{path === "/about" ? "About" : activeTitle}</strong>
         </div>
 
-        <div className="viewport">
+        {path === "/about" ? (
+          <div className="viewport">
+            <About onNavigate={navigate} />
+          </div>
+        ) : null}
+
+        {path === "/about" ? null : <div className="viewport">
           <div className="column">
             {error ? (
               <p className="banner" role="alert">
@@ -417,9 +448,9 @@ export function App() {
             ) : null}
             <div ref={endRef} />
           </div>
-        </div>
+        </div>}
 
-        <form className="composer-wrap" onSubmit={onAsk}>
+        {path === "/about" ? null : <form className="composer-wrap" onSubmit={onAsk}>
           <div className="composer">
             <textarea
               ref={composerRef}
@@ -455,7 +486,7 @@ export function App() {
             </div>
           </div>
           <p className="disclaimer">Folio cites the passage an answer came from. Check the source before you rely on it.</p>
-        </form>
+        </form>}
         <input
           ref={fileRef}
           type="file"
