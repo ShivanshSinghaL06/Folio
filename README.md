@@ -4,6 +4,10 @@ Folio is a document question-and-answer app made by [Shivansh Singhal](https://g
 
 The public app is at [https://folio-orcin-five.vercel.app](https://folio-orcin-five.vercel.app). A longer write-up of the implementation is in the app at [About](https://folio-orcin-five.vercel.app/about).
 
+<video src="frontend/public/folio.mp4" poster="frontend/public/folio.jpg" controls width="720"></video>
+
+[Play the film](frontend/public/folio.mp4)
+
 ## What it does
 
 You add a `.pdf` or `.docx` file. Older `.doc` files are rejected. A scanned PDF with no text layer fails with a clear error. This version does not run OCR. The file is parsed in the upload request, split into overlapping passages, and stored with a vector embedding and a full-text index.

@@ -12,6 +12,9 @@ export function About({ onNavigate }: { onNavigate: (href: string) => void }) {
         retrieved passages and cites the file, and the page or section when the extractor had one. It was made by
         Shivansh Singhal.
       </p>
+      <video className="about-film" controls playsInline poster="/folio.jpg" preload="metadata">
+        <source src="/folio.mp4" type="video/mp4" />
+      </video>
 
       <section>
         <h2>What it does</h2>

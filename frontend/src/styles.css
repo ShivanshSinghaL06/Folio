@@ -456,6 +456,15 @@ button:disabled { cursor: default; }
 
 .about-lead { font-size: 1.05rem; color: #3f3f46; }
 
+.about-film {
+  width: 100%;
+  margin: 4px 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #f4f4f5;
+  display: block;
+}
+
 .about h2 {
   margin: 28px 0 8px;
   font-size: 1.05rem;
